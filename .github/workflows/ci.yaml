@@ -15,7 +15,8 @@ permissions:
 
 env:
   AWS_REGION: us-east-2
-  ECR_REPOSITORY: devops-task-tracker
+  ECR_BACKEND_REPOSITORY: devops-task-tracker
+  ECR_FRONTEND_REPOSITORY: devops-task-tracker-frontend
 
 jobs:
 
@@ -28,12 +29,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # -------------------------
+      # BACKEND
+      # -------------------------
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Install dependencies
+      - name: Install backend dependencies
         run: |
           cd backend
           pip install -r requirements.txt
@@ -42,26 +47,68 @@ jobs:
         run: |
           python -m py_compile backend/app.py
 
-      - name: Build Docker image
+      - name: Build backend Docker image
         run: |
-          docker build -t devops-task-tracker-backend ./backend
+          docker build \
+            -t devops-task-tracker-backend:latest \
+            ./backend
+
+      # -------------------------
+      # FRONTEND
+      # -------------------------
+
+      - name: Build frontend Docker image
+        run: |
+          docker build \
+            -t devops-task-tracker-frontend:latest \
+            ./frontend
+
+      # -------------------------
+      # AWS / ECR
+      # -------------------------
 
       - name: Configure AWS credentials
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: aws-actions/configure-aws-credentials@v5
         with:
           role-to-assume: arn:aws:iam::716403253120:role/GitHubActions-ECR-DevOpsTaskTracker
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Tag Docker image
-        run: |
-          docker tag devops-task-tracker-backend:latest \
-          ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+      # -------------------------
+      # TAG IMAGES
+      # -------------------------
 
-      - name: Push Docker image to ECR
+      - name: Tag backend Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag \
+            devops-task-tracker-backend:latest \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:latest
+
+      - name: Tag frontend Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker tag \
+            devops-task-tracker-frontend:latest \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
+
+      # -------------------------
+      # PUSH IMAGES
+      # -------------------------
+
+      - name: Push backend Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           docker push \
-          ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:latest
+
+      - name: Push frontend Docker image
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          docker push \
+            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
