@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -9,7 +9,16 @@ on:
     branches:
       - main
 
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  ECR_REPOSITORY: devops-task-tracker
+
 jobs:
+
   test-and-build:
 
     runs-on: ubuntu-latest
@@ -36,3 +45,23 @@ jobs:
       - name: Build Docker image
         run: |
           docker build -t devops-task-tracker-backend ./backend
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: arn:aws:iam::716403253120:role/GitHubActions-ECR-DevOpsTaskTracker
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag Docker image
+        run: |
+          docker tag devops-task-tracker-backend:latest \
+          ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push \
+          ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
